@@ -17,14 +17,15 @@ pipeline {
       steps {
         bat '''
           echo ============================================
-          for /f "tokens=2" %%v in ('terraform version ^| findstr /i "Terraform v"') do (
+          for /f "tokens=2" %%v in ('terraform version ^| findstr /r "^Terraform v"') do (
             echo Terraform version for this run = %%v
+            goto :done
           )
+          :done
           echo ============================================
-        
-        where terraform
-        terraform version
     
+          where terraform
+          terraform version
         '''
       }
     }
