@@ -13,6 +13,17 @@ pipeline {
         checkout scm
       }
     }
+    stage('Show Terraform Version') {
+      steps {
+        bat '''
+          echo ============================================
+          for /f "tokens=2" %%v in ('terraform version ^| findstr /i "Terraform v"') do (
+            echo Terraform version for this run = %%v
+          )
+          echo ============================================
+        '''
+      }
+    }
 
     stage('Terraform Init') {
       steps {
