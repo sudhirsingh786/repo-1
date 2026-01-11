@@ -21,6 +21,10 @@ pipeline {
             echo Terraform version for this run = %%v
           )
           echo ============================================
+        
+        where terraform
+        terraform version
+    
         '''
       }
     }
