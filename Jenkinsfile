@@ -34,7 +34,8 @@ pipeline {
       when {
         anyOf {
           branch 'main'
-          branch pattern: "bucket.*", comparator: "REGEXP"
+          #branch pattern: "bucket.*", comparator: "REGEXP"
+          branch pattern: "(bucket|sa|pubsub|secret)-.*", comparator: "REGEXP"
         }
       }
       steps {
