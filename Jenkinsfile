@@ -13,6 +13,7 @@ pipeline {
         checkout scm
       }
     }
+
     stage('Show Terraform Version') {
       steps {
         bat '''
@@ -23,7 +24,7 @@ pipeline {
           )
           :done
           echo ============================================
-    
+
           where terraform
           terraform version
         '''
@@ -47,25 +48,12 @@ pipeline {
     }
 
     stage('Approval') {
-      when {
-        anyOf {
-          branch 'main'
-          
-          branch pattern: "(bucket|sa|pubsub|secret)-.*", comparator: "REGEXP"
-        }
-      }
       steps {
         input message: "Approve Terraform Apply for branch: %BRANCH_NAME% ?"
       }
     }
 
     stage('Terraform Apply') {
-      when {
-        anyOf {
-          branch 'main'
-          branch pattern: "bucket.*", comparator: "REGEXP"
-        }
-      }
       steps {
         bat '''
           terraform apply -input=false tfplan
