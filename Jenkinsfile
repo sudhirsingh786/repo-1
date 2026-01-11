@@ -16,7 +16,7 @@ pipeline {
 
     stage('Terraform Init') {
       steps {
-        sh '''
+        bat '''
           terraform init -input=false
         '''
       }
@@ -24,10 +24,8 @@ pipeline {
 
     stage('Terraform Plan') {
       steps {
-        sh '''
-          terraform plan \
-            -input=false \
-            -out=tfplan
+        bat '''
+          terraform plan -input=false -out=tfplan
         '''
       }
     }
@@ -40,7 +38,7 @@ pipeline {
         }
       }
       steps {
-        input message: "Approve Terraform Apply for branch: ${env.BRANCH_NAME} ?"
+        input message: "Approve Terraform Apply for branch: %BRANCH_NAME% ?"
       }
     }
 
@@ -52,10 +50,8 @@ pipeline {
         }
       }
       steps {
-        sh '''
-          terraform apply \
-            -input=false \
-            tfplan
+        bat '''
+          terraform apply -input=false tfplan
         '''
       }
     }
