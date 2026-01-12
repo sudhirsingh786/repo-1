@@ -4,6 +4,7 @@ pipeline {
   environment {
     TF_IN_AUTOMATION = "true"
     GOOGLE_APPLICATION_CREDENTIALS = credentials('gcp-sa-key')
+    TF_BIN = "E:\\aws\\terraform\\tf-diff-versions\\tf_1-6\\terraform.exe"
   }
 
   stages {
@@ -18,15 +19,10 @@ pipeline {
       steps {
         bat '''
           echo ============================================
-          for /f "tokens=2" %%v in ('terraform version ^| findstr /r "^Terraform v"') do (
-            echo Terraform version for this run = %%v
-            goto :done
-          )
-          :done
+          "%TF_BIN%" version
           echo ============================================
-
+    
           where terraform
-          terraform version
         '''
       }
     }
@@ -34,7 +30,7 @@ pipeline {
     stage('Terraform Init') {
       steps {
         bat '''
-          terraform init -input=false
+          "%TF_BIN%" init -input=false
         '''
       }
     }
@@ -42,7 +38,7 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         bat '''
-          terraform plan -input=false -out=tfplan
+          "%TF_BIN%" plan -input=false -out=tfplan
         '''
       }
     }
@@ -56,7 +52,7 @@ pipeline {
     stage('Terraform Apply') {
       steps {
         bat '''
-          terraform apply -input=false tfplan
+          "%TF_BIN%" apply -input=false tfplan
         '''
       }
     }
