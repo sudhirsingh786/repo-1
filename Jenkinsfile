@@ -4,7 +4,7 @@ pipeline {
   environment {
     TF_IN_AUTOMATION = "true"
     GOOGLE_APPLICATION_CREDENTIALS = credentials('gcp-sa-key')
-    TF_BIN = "E:\\aws\terraform\\tf-diff-versions\\tf_1-0\\terraform.exe"
+    TF_BIN = "E:\\aws\\terraform\\tf-diff-versions\\tf_1-0\\terraform.exe"
      
   }
 
