@@ -6,6 +6,4 @@ module "service_account" {
   labels     = var.labels
 }
 
-output "state_change_marker" {
-  value = timestamp()
-}
+
