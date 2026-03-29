@@ -82,51 +82,67 @@ resource "google_compute_instance" "test_instance" {
     
     # Format disk if not already formatted
     echo "Checking disk format..."
-    if ! sudo blkid /dev/sdb 2>/dev/null | grep -q ext4; then
+    if ! blkid /dev/sdb 2>/dev/null | grep -q ext4; then
       echo "Formatting disk as ext4..."
-      sudo mkfs.ext4 -F /dev/sdb || echo "Warning: Disk may already be formatted"
+      mkfs.ext4 -F /dev/sdb || {
+        echo "ERROR: Failed to format disk"
+        exit 1
+      }
     else
       echo "Disk already formatted with ext4"
     fi
     
     # Mount the disk
-    echo "Mounting external disk..."
+    echo "Mounting external disk /dev/sdb to /mnt/external-disk..."
     if ! grep -q /dev/sdb /etc/fstab; then
-      echo "/dev/sdb /mnt/external-disk ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+      echo "/dev/sdb /mnt/external-disk ext4 defaults,nofail 0 2" | tee -a /etc/fstab
     fi
     
-    sudo mount /mnt/external-disk || echo "Disk already mounted"
-    echo "Disk mounted successfully at /mnt/external-disk"
+    mount /mnt/external-disk || {
+      echo "ERROR: Failed to mount disk"
+      exit 1
+    }
+    echo "✓ Disk mounted successfully at /mnt/external-disk"
     
     # Set permissions
-    sudo chmod 755 /mnt/external-disk
+    chmod 755 /mnt/external-disk
     
     # Create test files on external disk
     echo "Creating test files on external disk..."
-    sudo bash -c 'cat > /mnt/external-disk/disk-verification.txt << "EOL"
+    cat > /mnt/external-disk/disk-verification.txt << "EOL"
 Disk Attached On: $(date)
 Hostname: $(hostname)
 VM Instance: Testing external disk attachment
-EOL'
+Boot Disk: /dev/sda1 (root filesystem)
+External Disk: /dev/sdb (attached data disk)
+Mount Point: /mnt/external-disk
+EOL
     
-    sudo bash -c 'cat > /mnt/external-disk/system-info.json << "EOL"
+    cat > /mnt/external-disk/system-info.json << "EOL"
 {
   "timestamp": "$(date -Iseconds)",
   "hostname": "$(hostname)",
-  "disk_path": "/dev/sdb",
+  "boot_disk": "/dev/sda1",
+  "boot_disk_mount": "/",
+  "external_disk": "/dev/sdb",
   "mount_point": "/mnt/external-disk",
   "purpose": "External storage for GeoServer"
 }
-EOL'
+EOL
     
     # Create GeoServer data directory on external disk
     echo "Creating GeoServer data directory..."
-    sudo mkdir -p /mnt/external-disk/geoserver-data
-    sudo chmod 755 /mnt/external-disk/geoserver-data
+    mkdir -p /mnt/external-disk/geoserver-data
+    mkdir -p /mnt/external-disk/geoserver-logs
+    chmod 755 /mnt/external-disk/geoserver-data
+    chmod 755 /mnt/external-disk/geoserver-logs
     
     # Backup verification output
-    sudo bash -c 'df -h > /mnt/external-disk/disk-usage.txt'
-    sudo bash -c 'lsblk >> /mnt/external-disk/disk-usage.txt'
+    df -h > /mnt/external-disk/disk-usage.txt
+    lsblk >> /mnt/external-disk/disk-usage.txt
+    echo "" >> /mnt/external-disk/disk-usage.txt
+    echo "=== Mount Information ===" >> /mnt/external-disk/disk-usage.txt
+    mount | grep /dev/ >> /mnt/external-disk/disk-usage.txt
     
     # Install GeoServer on external disk
     echo "Installing GeoServer on external disk..."
@@ -135,7 +151,7 @@ EOL'
     GEOSERVER_HOME="/opt/geoserver"
     
     # Create geoserver user
-    sudo useradd -m -d /mnt/external-disk/geoserver geoserver 2>/dev/null || echo "geoserver user already exists"
+    useradd -m -d /mnt/external-disk/geoserver geoserver 2>/dev/null || echo "geoserver user already exists"
     
     # Download and install GeoServer on external disk
     cd /tmp
@@ -147,23 +163,26 @@ EOL'
     
     # Extract to external disk
     echo "Extracting GeoServer to external disk..."
-    sudo unzip -q geoserver.zip -d $GEOSERVER_EXTERNAL || echo "Warning: GeoServer extraction had issues"
-    sudo chown -R geoserver:geoserver $GEOSERVER_EXTERNAL
-    sudo chmod +x $GEOSERVER_EXTERNAL/bin/startup.sh
+    unzip -q geoserver.zip -d $GEOSERVER_EXTERNAL || {
+      echo "ERROR: Failed to extract GeoServer"
+      exit 1
+    }
+    chown -R geoserver:geoserver $GEOSERVER_EXTERNAL
+    chmod +x $GEOSERVER_EXTERNAL/bin/startup.sh
     
     # Create symlink from /opt/geoserver to external disk
     echo "Creating symlink: /opt/geoserver -> /mnt/external-disk/geoserver..."
-    sudo ln -sfn $GEOSERVER_EXTERNAL $GEOSERVER_HOME
+    ln -sfn $GEOSERVER_EXTERNAL $GEOSERVER_HOME
     
-    # Create GeoServer data directory on external disk
-    echo "Creating GeoServer data directory..."
-    sudo mkdir -p /mnt/external-disk/geoserver-data
-    sudo mkdir -p /mnt/external-disk/geoserver-logs
-    sudo chmod 755 /mnt/external-disk/geoserver-data
-    sudo chmod 755 /mnt/external-disk/geoserver-logs
+    # Create GeoServer data directory on external disk (already created earlier)
+    echo "Setting up GeoServer data and log directories..."
+    chown -R geoserver:geoserver /mnt/external-disk/geoserver-data
+    chown -R geoserver:geoserver /mnt/external-disk/geoserver-logs
+    chmod 755 /mnt/external-disk/geoserver-data
+    chmod 755 /mnt/external-disk/geoserver-logs
     
     # Create GeoServer configuration on external disk
-    sudo bash -c 'cat > /mnt/external-disk/geoserver-env.sh << "EOL"
+    cat > /mnt/external-disk/geoserver-env.sh << "EOL"
 #!/bin/bash
 export GEOSERVER_HOME=/mnt/external-disk/geoserver
 export GEOSERVER_DATA_DIR=/mnt/external-disk/geoserver-data
@@ -174,9 +193,9 @@ echo "GeoServer environment configured"
 echo "GEOSERVER_HOME: $GEOSERVER_HOME"
 echo "GEOSERVER_DATA_DIR: $GEOSERVER_DATA_DIR"
 echo "GEOSERVER_LOG_DIR: $GEOSERVER_LOG_DIR"
-EOL'
+EOL
     
-    sudo chmod +x /mnt/external-disk/geoserver-env.sh
+    chmod +x /mnt/external-disk/geoserver-env.sh
     
     # ========== COMPREHENSIVE VERIFICATION ==========
     echo ""

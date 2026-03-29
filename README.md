@@ -1,74 +1,208 @@
 # GCP VM Instance with Attached Disk - Terraform to OpenTofu Migration
 
-This folder contains Terraform configuration for creating a GCP Compute Instance with an attached persistent disk via data source reference.
+## Filesystem Configuration
 
-## Resources
+This VM deploys with TWO disks:
 
-- `google_compute_instance` - Creates a GCP VM instance
-- `data.google_compute_disk` - References an existing persistent disk (created in disk branch)
+### Boot Disk: `/dev/sda1`
+- **Size**: 9.7 GB
+- **Type**: Boot filesystem
+- **Mount Point**: `/` (root)
+- **Device Path**: `/dev/sda1`
+- Partitions (from `lsblk`):
+  - `/dev/sda1` (9.9G) → mounted at `/`
+  - `/dev/sda14` (3M) → BIOS boot partition
+  - `/dev/sda15` (124M) → mounted at `/boot/efi` (EFI System Partition)
 
-## Prerequisites
+### External Disk: `/dev/sdb`
+- **Size**: 10 GB
+- **Type**: Persistent data disk
+- **Mount Point**: `/mnt/external-disk`
+- **Format**: ext4
+- **Filesystem Entry**: `/dev/sdb /mnt/external-disk ext4 defaults,nofail 0 2`
 
-The disk must exist in the same project and zone. Deploy the disk branch first:
-```bash
-git checkout disk
-terraform apply
+## Startup Script - Automatic Setup
+
+The startup script automatically:
+
+1. **Detects External Disk** - Waits for `/dev/sdb` to appear
+2. **Formats Disk** - `mkfs.ext4 -F /dev/sdb`
+3. **Creates Mount Point** - `mkdir -p /mnt/external-disk`
+4. **Adds fstab Entry** - For persistent mounting
+5. **Mounts Disk** - `mount /mnt/external-disk`
+6. **Sets Permissions** - `chmod 755 /mnt/external-disk`
+7. **Creates Test Files** on `/mnt/external-disk`:
+   - `disk-verification.txt` - Boot timestamp & config
+   - `system-info.json` - JSON system metadata
+   - `disk-usage.txt` - df & lsblk output
+8. **Installs GeoServer** to `/mnt/external-disk/geoserver`
+9. **Creates Symlink** - `/opt/geoserver` → `/mnt/external-disk/geoserver`
+10. **Creates Data Directories** - `/mnt/external-disk/geoserver-data` & `/mnt/external-disk/geoserver-logs`
+
+## Directory Structure After Deployment
+
+```
+/                                          # Boot disk root
+├── /dev/sda1                              # Boot disk partition
+├── /boot/efi                              # EFI partition
+└── /mnt/external-disk                     # External disk mount
+    ├── geoserver/                         # GeoServer installation
+    │   └── bin/startup.sh
+    ├── geoserver-data/                    # GeoServer data directory
+    ├── geoserver-logs/                    # GeoServer log directory
+    ├── geoserver-env.sh                   # Environment config
+    ├── disk-verification.txt              # Test file with boot info
+    ├── system-info.json                   # JSON test file
+    └── disk-usage.txt                     # Disk info snapshot
 ```
 
-## Usage
-
-### Terraform
+## Symlink Configuration
 
 ```bash
-terraform init -reconfigure
-terraform plan
-terraform apply
+/opt/geoserver → /mnt/external-disk/geoserver
 ```
 
-### OpenTofu
+Both paths point to the same GeoServer installation on the external disk.
 
-After migration:
+## Verification Commands
 
+### Check Boot Disk
 ```bash
-tofu init -reconfigure
-tofu plan
-tofu apply
+# Boot disk usage
+df -h /
+
+# Boot disk details
+lsblk | grep sda
 ```
 
-## Variables
+### Check External Disk
+```bash
+# External disk mounted?
+df -h /mnt/external-disk
 
-- `project_id` - GCP Project ID (required)
-- `region` - GCP Region (default: us-central1)
-- `zone` - GCP Zone (default: us-central1-a)
-- `instance_name` - Name of the VM instance (default: test-vm-instance)
-- `machine_type` - Machine type (default: e2-medium)
-- `attached_disk_name` - Name of disk to attach (default: test-disk) - must exist in same zone
-- `image_family` - Boot image family (default: debian-11)
-- `image_project` - Project with boot image (default: debian-cloud)
-- `labels` - Labels for the instance
+# External disk device
+lsblk | grep sdb
 
-## Outputs
+# Mount status
+mount | grep /dev/sdb
+```
 
-- `instance_id` - Unique identifier of the instance
-- `instance_name` - Name of the instance
-- `instance_self_link` - URI of the instance
-- `instance_public_ip` - Public IP address
-- `instance_internal_ip` - Internal IP address
-- `attached_disk_name` - Name of the attached disk
-- `attached_disk_self_link` - Self link of the attached disk
-- `attached_disk_size_gb` - Size of the attached disk
+### Check Filesystem Table
+```bash
+# View fstab entries for both disks
+cat /etc/fstab | grep "sda1\|sdb"
 
-## Backend
+# Full fstab
+cat /etc/fstab
+```
+
+### Check GeoServer on External Disk
+```bash
+# Symlink verification
+ls -lh /opt/geoserver
+
+# Symlink target
+readlink -f /opt/geoserver
+
+# GeoServer directory
+ls -lah /mnt/external-disk/geoserver
+
+# Data directory
+ls -lah /mnt/external-disk/geoserver-data
+
+# Logs directory
+ls -lah /mnt/external-disk/geoserver-logs
+```
+
+### View Test Files
+```bash
+# Disk verification file
+cat /mnt/external-disk/disk-verification.txt
+
+# System info JSON
+cat /mnt/external-disk/system-info.json
+
+# Disk usage snapshot
+cat /mnt/external-disk/disk-usage.txt
+```
+
+### All Filesystems Summary
+```bash
+# All mounted filesystems with disk usage
+df -h
+
+# All block devices with partitions
+lsblk
+
+# All mounted devices
+mount | grep /dev/
+```
+
+## Backend Configuration
 
 - **Type**: GCS (Google Cloud Storage)
 - **Bucket**: bucket-terraform-state-786
 - **Prefix**: ecom-vm
 
-## CI/CD
+## Machine Configuration
 
-Jenkinsfile is set up for automated:
-- terraform init (with -reconfigure flag for fresh workspaces)
-- terraform plan
-- Manual approval before apply
-- terraform apply
-- Artifact archival of plan file
+- **Instance Name**: test-vm-instance
+- **Machine Type**: e2-small
+- **Boot Image**: Debian 11
+- **Boot Disk Size**: 10 GB (`/dev/sda1`)
+- **External Data Disk**: 10 GB (`/dev/sdb`)
+- **Zone**: us-central1-a
+
+## Deployment Order
+
+1. **Disk Branch** - Create the persistent disk:
+   ```bash
+   git checkout disk
+   terraform init -reconfigure
+   terraform apply
+   ```
+
+2. **VM Branch** - Create VM and attach disk:
+   ```bash
+   git checkout vm
+   terraform init -reconfigure
+   terraform apply
+   ```
+
+## Startup Script Logs
+
+View the complete startup process logs:
+```bash
+cat /var/log/startup-script.log
+```
+
+## Troubleshooting
+
+### External Disk Not Mounted?
+```bash
+# Check if disk exists
+lsblk
+
+# Manually mount
+sudo mount /dev/sdb /mnt/external-disk
+
+# Check fstab
+cat /etc/fstab
+```
+
+### GeoServer Symlink Issues?
+```bash
+# Verify symlink exists
+ls -lh /opt/geoserver
+
+# Recreate symlink if broken
+sudo ln -sfn /mnt/external-disk/geoserver /opt/geoserver
+```
+
+### Fix Permissions
+```bash
+# Reset GeoServer directory permissions
+sudo chown -R geoserver:geoserver /mnt/external-disk/geoserver*
+sudo chmod 755 /mnt/external-disk/geoserver-data
+sudo chmod 755 /mnt/external-disk/geoserver-logs
+```
