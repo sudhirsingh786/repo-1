@@ -15,5 +15,5 @@ output "disk_self_link" {
 
 output "disk_size_gb" {
   description = "The size of the disk in GB"
-  value       = google_compute_disk.test_disk.size_gb
+  value       = google_compute_disk.test_disk.size
 }
