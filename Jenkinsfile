@@ -31,7 +31,7 @@ pipeline {
     stage('Terraform Init') {
       steps {
         bat '''
-          "%TF_BIN%" init -input=false
+          "%TF_BIN%" init -input=false -reconfigure
         '''
       }
     }
