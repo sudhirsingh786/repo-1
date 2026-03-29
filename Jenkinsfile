@@ -53,7 +53,7 @@ pipeline {
     stage('Terraform Apply') {
       steps {
         bat '''
-          "%TF_BIN%" destroy -input=false
+          "%TF_BIN%" apply -input=false tfplan
         '''
       }
     }
